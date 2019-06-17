@@ -30,25 +30,29 @@ import (
 	"github.com/coreos/clair/database"
 	"github.com/coreos/clair/pkg/commonerr"
 	"github.com/coreos/clair/pkg/tarutil"
+	"github.com/coreos/clair/pkg/updater"
 )
 
 const (
 	// These are the route identifiers for prometheus.
-	postLayerRoute           = "v1/postLayer"
-	getLayerRoute            = "v1/getLayer"
-	deleteLayerRoute         = "v1/deleteLayer"
-	getNamespacesRoute       = "v1/getNamespaces"
-	getVulnerabilitiesRoute  = "v1/getVulnerabilities"
-	postVulnerabilityRoute   = "v1/postVulnerability"
-	getVulnerabilityRoute    = "v1/getVulnerability"
-	putVulnerabilityRoute    = "v1/putVulnerability"
-	deleteVulnerabilityRoute = "v1/deleteVulnerability"
-	getFixesRoute            = "v1/getFixes"
-	putFixRoute              = "v1/putFix"
-	deleteFixRoute           = "v1/deleteFix"
-	getNotificationRoute     = "v1/getNotification"
-	deleteNotificationRoute  = "v1/deleteNotification"
-	getMetricsRoute          = "v1/getMetrics"
+	postLayerRoute             = "v1/postLayer"
+	getLayerRoute              = "v1/getLayer"
+	deleteLayerRoute           = "v1/deleteLayer"
+	getNamespacesRoute         = "v1/getNamespaces"
+	getVulnerabilitiesRoute    = "v1/getVulnerabilities"
+	postVulnerabilityRoute     = "v1/postVulnerability"
+	getVulnerabilityRoute      = "v1/getVulnerability"
+	putVulnerabilityRoute      = "v1/putVulnerability"
+	deleteVulnerabilityRoute   = "v1/deleteVulnerability"
+	getFixesRoute              = "v1/getFixes"
+	putFixRoute                = "v1/putFix"
+	deleteFixRoute             = "v1/deleteFix"
+	getNotificationRoute       = "v1/getNotification"
+	deleteNotificationRoute    = "v1/deleteNotification"
+	getMetricsRoute            = "v1/getMetrics"
+	updateVulnerabilitiesRoute = "v1/updateVulnerabilitiesRoute"
+	setUpdaterPolicyRoute      = "v1/setUpdaterPolicy"
+	getUpdaterPolicyRoute      = "v1/getUpdaterPolicy"
 
 	// maxBodySize restricts client request bodies to 1MiB.
 	maxBodySize int64 = 1048576
@@ -499,4 +503,64 @@ func deleteNotification(w http.ResponseWriter, r *http.Request, p httprouter.Par
 func getMetrics(w http.ResponseWriter, r *http.Request, p httprouter.Params, ctx *context) (string, int) {
 	prometheus.Handler().ServeHTTP(w, r)
 	return getMetricsRoute, 0
+}
+
+func updateVolnerabilities(w http.ResponseWriter, r *http.Request, p httprouter.Params, ctx *context) (string, int) {
+	go func() {
+		updated := clair.Update(ctx.Store)
+		if updated {
+			log.Infof("Vulnerabilities database updated successfully.")
+		} else {
+			log.Errorf("Vulnerabilities database update failed.")
+		}
+	}()
+
+	w.WriteHeader(http.StatusOK)
+	return updateVulnerabilitiesRoute, http.StatusOK
+}
+
+func setSetting(w http.ResponseWriter, r *http.Request, p httprouter.Params, ctx *context) (string, int) {
+	setting := SettingEnvelope{}
+	err := decodeJSON(r, &setting)
+	if err != nil {
+		log.Errorf("Decode request body error: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return setUpdaterPolicyRoute, http.StatusBadRequest
+	}
+
+	if setting.Name != updater.UpdaterScheduleSetting {
+		log.Errorf("Unknown setting '%s', only '%s' is supported now.", setting.Name, updater.UpdaterScheduleSetting)
+		w.WriteHeader(http.StatusBadRequest)
+		return setUpdaterPolicyRoute, http.StatusBadRequest
+	}
+
+	err = updater.UpdateSchedule(ctx.Store, setting.Value)
+	if err != nil {
+		log.Errorf("Update updater schedule error: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return setUpdaterPolicyRoute, http.StatusInternalServerError
+	}
+
+	w.WriteHeader(http.StatusOK)
+	return setUpdaterPolicyRoute, http.StatusOK
+}
+
+func getSetting(w http.ResponseWriter, r *http.Request, p httprouter.Params, ctx *context) (string, int) {
+	setting := p.ByName("setting")
+	if setting != updater.UpdaterScheduleSetting {
+		log.Errorf("Unknown setting '%s', only '%s' is supported now.", setting, updater.UpdaterScheduleSetting)
+		w.WriteHeader(http.StatusBadRequest)
+		return getUpdaterPolicyRoute, http.StatusBadRequest
+	}
+
+	value, err := updater.GetSchedule(ctx.Store)
+	if err != nil {
+		log.Errorf("Get updater schedule error: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return getUpdaterPolicyRoute, http.StatusInternalServerError
+	}
+	writeResponse(w, r, http.StatusOK, SettingEnvelope{Name: setting, Value: value})
+
+	w.WriteHeader(http.StatusOK)
+	return getUpdaterPolicyRoute, http.StatusOK
 }
