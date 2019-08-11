@@ -111,7 +111,10 @@ func Boot(config *Config) {
 	// Start updater
 	st.Begin()
 	if !config.Updater.Disabled {
+		log.Info("Start regular updater")
 		go updater.ScheduleUpdater(db, config.Updater.Cron)
+	} else {
+		log.Info("Updater is disabled")
 	}
 
 	// Wait for interruption and shutdown gracefully.
