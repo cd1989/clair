@@ -12,10 +12,14 @@ const UpdaterScheduleSetting = "updater-schedule"
 
 var c *cron.Cron
 
-func ScheduleUpdater(db database.Datastore) {
+func ScheduleUpdater(db database.Datastore, defaultCron string) {
 	updaterSchedule, err := db.GetSetting(UpdaterScheduleSetting)
 	if err != nil {
 		log.Fatalf("Get setting '%s' error: %v", UpdaterScheduleSetting, err)
+	}
+
+	if len(updaterSchedule) == 0 {
+		updaterSchedule = defaultCron
 	}
 
 	_, err = cron.Parse(updaterSchedule)

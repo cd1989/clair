@@ -22,7 +22,6 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/coreos/clair"
 	"github.com/coreos/clair/api"
 	"github.com/coreos/clair/database"
 	"github.com/coreos/clair/ext/notification"
@@ -39,10 +38,18 @@ type File struct {
 	Clair Config `yaml:"clair"`
 }
 
+// UpdaterConfig configures the regularly updater by cron
+type UpdaterConfig struct {
+	// Cron defines when to update, refer to https://godoc.org/github.com/robfig/cron
+	Cron string
+	// Disabled indicates whether the regular updater is disabled
+	Disabled bool
+}
+
 // Config is the global configuration for an instance of Clair.
 type Config struct {
 	Database database.RegistrableComponentConfig
-	Updater  *clair.UpdaterConfig
+	Updater  *UpdaterConfig
 	Notifier *notification.Config
 	API      *api.Config
 }
@@ -53,8 +60,9 @@ func DefaultConfig() Config {
 		Database: database.RegistrableComponentConfig{
 			Type: "pgsql",
 		},
-		Updater: &clair.UpdaterConfig{
-			Interval: 1 * time.Hour,
+		Updater: &UpdaterConfig{
+			Cron:     "@midnight",
+			Disabled: false,
 		},
 		API: &api.Config{
 			Port:       6060,
@@ -105,7 +113,7 @@ func LoadConfig(path string) (config *Config, err error) {
 	} else {
 		_, err = fernet.DecodeKey(config.API.PaginationKey)
 		if err != nil {
-			err = errors.New("Invalid Pagination key; must be 32-bit URL-safe base64")
+			err = errors.New("invalid Pagination key; must be 32-bit URL-safe base64")
 			return
 		}
 	}

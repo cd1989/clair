@@ -110,8 +110,9 @@ func Boot(config *Config) {
 
 	// Start updater
 	st.Begin()
-	// go clair.RunUpdater(config.Updater, db, st)
-	go updater.ScheduleUpdater(db)
+	if !config.Updater.Disabled {
+		go updater.ScheduleUpdater(db, config.Updater.Cron)
+	}
 
 	// Wait for interruption and shutdown gracefully.
 	waitForSignals(syscall.SIGINT, syscall.SIGTERM)
@@ -143,7 +144,6 @@ func main() {
 	}
 
 	// Initialize logging system
-
 	logLevel, err := log.ParseLevel(strings.ToUpper(*flagLogLevel))
 	log.SetLevel(logLevel)
 	log.SetOutput(os.Stdout)

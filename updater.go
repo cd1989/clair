@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pborman/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
@@ -28,7 +27,6 @@ import (
 	"github.com/coreos/clair/ext/vulnmdsrc"
 	"github.com/coreos/clair/ext/vulnsrc"
 	"github.com/coreos/clair/pkg/stopper"
-	"github.com/coreos/clair/pkg/timeutil"
 )
 
 const (
@@ -62,114 +60,6 @@ func init() {
 	prometheus.MustRegister(promUpdaterErrorsTotal)
 	prometheus.MustRegister(promUpdaterDurationSeconds)
 	prometheus.MustRegister(promUpdaterNotesTotal)
-}
-
-// UpdaterConfig is the configuration for the Updater service.
-type UpdaterConfig struct {
-	Interval time.Duration
-}
-
-// RunUpdater begins a process that updates the vulnerability database at
-// regular intervals.
-func RunUpdater(config *UpdaterConfig, datastore database.Datastore, st *stopper.Stopper) {
-	defer st.End()
-
-	// Do not run the updater if there is no config or if the interval is 0.
-	if config == nil || config.Interval == 0 {
-		log.Info("updater service is disabled.")
-		return
-	}
-
-	whoAmI := uuid.New()
-	log.WithField("lock identifier", whoAmI).Info("updater service started")
-
-	for {
-		var stop, updateSuccessful bool
-
-		// Determine if this is the first update and define the next update time.
-		// The next update time is (last update time + interval) or now if this is the first update.
-		nextUpdate := time.Now().UTC()
-		lastUpdate, firstUpdate, err := getLastUpdate(datastore)
-		if err != nil {
-			log.WithError(err).Error("an error occured while getting the last update time")
-			nextUpdate = nextUpdate.Add(config.Interval)
-		} else if firstUpdate == false {
-			nextUpdate = lastUpdate.Add(config.Interval)
-		}
-
-		// If the next update timer is in the past, then try to update.
-		if nextUpdate.Before(time.Now().UTC()) {
-			// Attempt to get a lock on the the update.
-			log.Debug("attempting to obtain update lock")
-			hasLock, hasLockUntil := datastore.Lock(updaterLockName, whoAmI, updaterLockDuration, false)
-			if hasLock {
-				// Launch update in a new go routine.
-				doneC := make(chan bool, 1)
-				go func() {
-					updateSuccessful = update(datastore, firstUpdate)
-					doneC <- true
-				}()
-
-				for done := false; !done && !stop; {
-					select {
-					case <-doneC:
-						done = true
-					case <-time.After(updaterLockRefreshDuration):
-						// Refresh the lock until the update is done.
-						datastore.Lock(updaterLockName, whoAmI, updaterLockDuration, true)
-					case <-st.Chan():
-						stop = true
-					}
-				}
-
-				// Unlock the update.
-				datastore.Unlock(updaterLockName, whoAmI)
-
-				if stop {
-					break
-				}
-
-				// Extend the sleep duration if there're errors to any updaters.
-				if updateSuccessful {
-					sleepDuration = updaterSleepBetweenLoopsDuration
-				} else {
-					sleepDuration = timeutil.ExpBackoff(sleepDuration, config.Interval)
-					log.Warn("Not all updaters succeeded, sleep duration: ", sleepDuration)
-				}
-
-				// Sleep for a certain duration to prevent pinning the CPU and request requests on a
-				// consistent failure.
-				if stopped := sleepUpdater(time.Now().Add(sleepDuration), st); stopped {
-					break
-				}
-				continue
-
-			} else {
-				lockOwner, lockExpiration, err := datastore.FindLock(updaterLockName)
-				if err != nil {
-					log.Debug("update lock is already taken")
-					nextUpdate = hasLockUntil
-				} else {
-					log.WithFields(log.Fields{"lock owner": lockOwner, "lock expiration": lockExpiration}).Debug("update lock is already taken")
-					nextUpdate = lockExpiration
-				}
-			}
-		}
-
-		if stopped := sleepUpdater(nextUpdate, st); stopped {
-			break
-		}
-	}
-
-	// Clean resources.
-	for _, appenders := range vulnmdsrc.Appenders() {
-		appenders.Clean()
-	}
-	for _, updaters := range vulnsrc.Updaters() {
-		updaters.Clean()
-	}
-
-	log.Info("updater service stopped")
 }
 
 func Update(datastore database.Datastore) bool {
