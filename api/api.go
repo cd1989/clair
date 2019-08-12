@@ -27,21 +27,13 @@ import (
 	"github.com/tylerb/graceful"
 
 	"github.com/coreos/clair/database"
+	"github.com/coreos/clair/pkg/config"
 	"github.com/coreos/clair/pkg/stopper"
 )
 
 const timeoutResponse = `{"Error":{"Message":"Clair failed to respond within the configured timeout window.","Type":"Timeout"}}`
 
-// Config is the configuration for the API service.
-type Config struct {
-	Port                      int
-	HealthPort                int
-	Timeout                   time.Duration
-	PaginationKey             string
-	CertFile, KeyFile, CAFile string
-}
-
-func Run(cfg *Config, store database.Datastore, st *stopper.Stopper) {
+func Run(cfg *config.APIConfig, store database.Datastore, st *stopper.Stopper) {
 	defer st.End()
 
 	// Do not run the API service if there is no config.
@@ -74,7 +66,7 @@ func Run(cfg *Config, store database.Datastore, st *stopper.Stopper) {
 	log.Info("main API stopped")
 }
 
-func RunHealth(cfg *Config, store database.Datastore, st *stopper.Stopper) {
+func RunHealth(cfg *config.APIConfig, store database.Datastore, st *stopper.Stopper) {
 	defer st.End()
 
 	// Do not run the API service if there is no config.

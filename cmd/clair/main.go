@@ -31,6 +31,7 @@ import (
 	"github.com/coreos/clair/api"
 	"github.com/coreos/clair/database"
 	"github.com/coreos/clair/ext/imagefmt"
+	appconfig "github.com/coreos/clair/pkg/config"
 	"github.com/coreos/clair/pkg/formatter"
 	"github.com/coreos/clair/pkg/stopper"
 
@@ -87,7 +88,7 @@ func stopCPUProfiling(f *os.File) {
 }
 
 // Boot starts Clair instance with the provided config.
-func Boot(config *Config) {
+func Boot(config *appconfig.Config) {
 	rand.Seed(time.Now().UnixNano())
 	st := stopper.NewStopper()
 
@@ -141,10 +142,11 @@ func main() {
 	}
 
 	// Load configuration
-	config, err := LoadConfig(*flagConfigPath)
+	config, err := appconfig.LoadConfig(*flagConfigPath)
 	if err != nil {
 		log.WithError(err).Fatal("failed to load configuration")
 	}
+	appconfig.AppConfig = config
 
 	// Initialize logging system
 	logLevel, err := log.ParseLevel(strings.ToUpper(*flagLogLevel))

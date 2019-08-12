@@ -3,6 +3,7 @@ package updater
 import (
 	"github.com/coreos/clair"
 	"github.com/coreos/clair/database"
+	"github.com/coreos/clair/pkg/config"
 
 	"github.com/robfig/cron"
 	log "github.com/sirupsen/logrus"
@@ -52,7 +53,14 @@ func UpdateSchedule(db database.Datastore, schedule string) error {
 		return err
 	}
 
-	c.Stop()
+	if config.AppConfig.Updater.Disabled {
+		log.Info("Updater not scheduled as disabled")
+		return nil
+	}
+
+	if c != nil {
+		c.Stop()
+	}
 	c = cron.New()
 	c.AddFunc(schedule, func() {
 		log.Info("Start vulnerabilities database update by cron schedule.")

@@ -23,6 +23,7 @@ import (
 
 	"github.com/coreos/clair/api/v1"
 	"github.com/coreos/clair/database"
+	"github.com/coreos/clair/pkg/config"
 )
 
 // router is an HTTP router that forwards requests to the appropriate sub-router
@@ -32,7 +33,7 @@ type router map[string]*httprouter.Router
 // Let's hope we never have more than 99 API versions.
 const apiVersionLength = len("v99")
 
-func newAPIHandler(cfg *Config, store database.Datastore) http.Handler {
+func newAPIHandler(cfg *config.APIConfig, store database.Datastore) http.Handler {
 	router := make(router)
 	router["/v1"] = v1.NewRouter(store, cfg.PaginationKey)
 	return router
